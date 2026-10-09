@@ -69,7 +69,7 @@ pip install -e ".[dev]"       # With dev dependencies (pytest, mypy, black, flak
 
 - **CMake** (C++20, ninja) builds the instrumentation libraries and LLVM passes
 - **setuptools** (`setup.py`) packages the Python CLI/API; version derived from `polytracker/include/polytracker/polytracker.h`
-- **Docker multi-stage build**: base (Ubuntu Jammy + clang-12) → LLVM 13 sources → clean libc++ → instrumented libc++ → final polytracker image
+- **Docker multi-stage build**: base (Ubuntu Jammy + clang-23) → LLVM 23.1.2 sources → clean libc++ → instrumented libc++ → final polytracker image
 - Git submodules for third-party C++ deps: Catch2, indicators, spdlog. Run `git submodule update --init --recursive` after clone.
 
 ### Test structure

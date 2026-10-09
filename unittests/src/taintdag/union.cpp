@@ -13,7 +13,7 @@ using namespace taintdag;
 
 using label_set = std::vector<label_t>;
 label_set to_labels(Taint const &t) {
-  if (auto st = std::get_if<SourceTaint>(&t))
+  if (std::holds_alternative<SourceTaint>(t))
     return {};
   else if (auto ut = std::get_if<UnionTaint>(&t))
     return {ut->lower, ut->higher};

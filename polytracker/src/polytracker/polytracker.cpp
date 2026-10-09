@@ -12,13 +12,14 @@
 EARLY_CONSTRUCT_EXTERN_GETTER(taintdag::PolyTracker, polytracker_tdag);
 
 static std::atomic_flag polytracker_init_flag = ATOMIC_FLAG_INIT;
+static std::atomic_bool polytracker_control_flow_logging{true};
 
 static bool polytracker_is_initialized() {
   return polytracker_init_flag.test(std::memory_order_relaxed);
 }
 
-static void polytracker_initialize() {
-  polytracker_init_flag.test_and_set(std::memory_order_relaxed);
+static bool polytracker_initialize() {
+  return !polytracker_init_flag.test_and_set(std::memory_order_acq_rel);
 }
 
 extern "C" taintdag::Functions::index_t
@@ -46,13 +47,18 @@ extern "C" dfsan_label __polytracker_union_table(const dfsan_label &l1,
 }
 
 extern "C" void __polytracker_log_conditional_branch(dfsan_label label) {
-  if (!polytracker_is_initialized()) {
+  if (!polytracker_is_initialized() ||
+      !polytracker_control_flow_logging.load(std::memory_order_relaxed)) {
     return;
   }
 
   if (label > 0) {
     get_polytracker_tdag().affects_control_flow(label);
   }
+}
+
+extern "C" void __polytracker_set_control_flow_logging(uint8_t enabled) {
+  polytracker_control_flow_logging.store(enabled != 0, std::memory_order_relaxed);
 }
 
 extern "C" void
@@ -65,8 +71,10 @@ __dfsw___polytracker_log_conditional_branch(uint64_t conditional,
 }
 
 extern "C" void __taint_start() {
+  if (!polytracker_initialize()) {
+    return;
+  }
   taint_start();
-  polytracker_initialize();
 }
 
 extern "C" void __polytracker_taint_argv(int argc, char *argv[]) {

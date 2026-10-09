@@ -1,4 +1,9 @@
-find_package(LLVM 12 CONFIG REQUIRED)
+find_package(LLVM CONFIG REQUIRED)
+if(NOT LLVM_VERSION_MAJOR EQUAL 23)
+  message(FATAL_ERROR "PolyTracker requires LLVM 23; found ${LLVM_PACKAGE_VERSION}")
+endif()
+set(LLVM_CONFIG_PATH "${LLVM_TOOLS_BINARY_DIR}/llvm-config" CACHE FILEPATH
+    "Path to the llvm-config matching the pass toolchain")
 
 add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
@@ -23,6 +28,12 @@ set(COMPILER_RT_BUILD_XRAY OFF CACHE BOOL "")
 set(COMPILER_RT_BUILD_LIBFUZZER OFF CACHE BOOL "")
 set(COMPILER_RT_BUILD_MEMPROF OFF CACHE BOOL "")
 
+# The vendored compiler-rt still uses LLVM's former TARGET_TRIPLE name.
+if(CMAKE_C_COMPILER_TARGET)
+  set(TARGET_TRIPLE "${CMAKE_C_COMPILER_TARGET}")
+else()
+  set(TARGET_TRIPLE "${LLVM_TARGET_TRIPLE}")
+endif()
 add_subdirectory(compiler-rt)
 
 set(POLYTRACKER_DIR polytracker)
@@ -48,7 +59,16 @@ set(TAINTDAG_SOURCES
 add_library(Polytracker STATIC ${POLYTRACKER_SOURCES} ${TAINT_SOURCES}
                                ${TAINTDAG_SOURCES})
 
-set(POLYTRACKER_COMPILE_OPTS -stdlib=libc++ -fno-exceptions -fno-rtti -Wall -Werror)
+option(POLYTRACKER_USE_LIBCXX "Build the PolyTracker runtime with libc++" ON)
+
+set(POLYTRACKER_COMPILE_OPTS -fno-exceptions -fno-rtti -Wall -Werror)
+
+if(POLYTRACKER_USE_LIBCXX)
+  list(APPEND POLYTRACKER_COMPILE_OPTS -stdlib=libc++)
+  target_include_directories(Polytracker PRIVATE ${CXX_LIB_PATH}/include/c++/v1)
+  target_link_directories(Polytracker PUBLIC ${CXX_LIB_PATH}/lib)
+  target_link_libraries(Polytracker c++)
+endif()
 
 if(XRAY_ON)
   list(APPEND POLYTRACKER_COMPILE_OPTS -fxray-instrument
@@ -56,10 +76,8 @@ if(XRAY_ON)
 endif()
 
 target_include_directories(Polytracker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/compiler-rt/include)
-target_include_directories(Polytracker PRIVATE ${CXX_LIB_PATH}/include/c++/v1)
 target_compile_options(Polytracker PRIVATE ${POLYTRACKER_COMPILE_OPTS})
-target_link_directories(Polytracker PUBLIC ${CXX_LIB_PATH}/lib)
-target_link_libraries(Polytracker LLVMPassConfig spdlog::spdlog_header_only c++)
+target_link_libraries(Polytracker LLVMPassConfig spdlog::spdlog_header_only)
 set_property(TARGET Polytracker PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 install(TARGETS Polytracker DESTINATION ${POLYTRACKER_LIB_DIR})

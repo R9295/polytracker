@@ -26,7 +26,7 @@ void FunctionTracingPass::declareLoggingFunctions(llvm::Module &mod) {
   auto fn_index_t{ir.getIntNTy(sizeof(taintdag::Functions::index_t) * 8)};
   func_entry_log_fn =
       mod.getOrInsertFunction("__polytracker_log_func_entry", fn_index_t,
-                              ir.getInt8PtrTy(), ir.getInt16Ty());
+                              ir.getPtrTy(), ir.getInt16Ty());
   func_exit_log_fn = mod.getOrInsertFunction("__polytracker_log_func_exit",
                                              ir.getVoidTy(), fn_index_t);
 }
@@ -46,7 +46,7 @@ FunctionTracingPass::run(llvm::Module &mod, llvm::ModuleAnalysisManager &mam) {
       continue;
     }
     llvm::IRBuilder<> ir(&*fn.getEntryBlock().begin());
-    auto fname_ptr{ir.CreateGlobalStringPtr(fname)};
+    auto fname_ptr{ir.CreateGlobalString(fname)};
     log_entry_calls[&fn] = ir.CreateCall(
         func_entry_log_fn, {fname_ptr, ir.getInt16(fname.size())});
     visit(fn);

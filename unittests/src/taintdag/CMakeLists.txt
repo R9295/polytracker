@@ -21,7 +21,7 @@ target_include_directories(${TAINTDAG_UNITTEST}
                            PRIVATE ${CXX_LIB_PATH}/include/c++/v1)
 
 target_compile_options(${TAINTDAG_UNITTEST} PRIVATE -stdlib=libc++
-                                                    -Wall -Werror)
+                                                    -include new -Wall -Werror)
 target_link_libraries(${TAINTDAG_UNITTEST} Polytracker Catch2::Catch2
                       spdlog::spdlog_header_only ${CXX_LIB_PATH}/lib/libc++.a ${CXX_LIB_PATH}/lib/libc++abi.a)
 

@@ -28,6 +28,30 @@ fun:open64=custom
 fun:getrandom=uninstrumented
 fun:getrandom=discard
 
+#########################################
+# Rust allocation shims
+#########################################
+# These compiler-generated symbols are supplied after LLVM instrumentation.
+# The allocations start untainted; data copied into them remains instrumented.
+fun:*___rust_alloc*=uninstrumented
+fun:*___rust_alloc*=discard
+fun:*___rust_alloc_zeroed*=uninstrumented
+fun:*___rust_alloc_zeroed*=discard
+fun:*___rust_dealloc*=uninstrumented
+fun:*___rust_dealloc*=discard
+fun:*___rust_realloc*=uninstrumented
+fun:*___rust_realloc*=discard
+fun:*___rust_no_alloc_shim_is_unstable*=uninstrumented
+fun:*___rust_no_alloc_shim_is_unstable*=discard
+fun:*__rdl_alloc*=uninstrumented
+fun:*__rdl_alloc*=discard
+fun:*__rdl_alloc_zeroed*=uninstrumented
+fun:*__rdl_alloc_zeroed*=discard
+fun:*__rdl_dealloc*=uninstrumented
+fun:*__rdl_dealloc*=discard
+fun:*__rdl_realloc*=uninstrumented
+fun:*__rdl_realloc*=discard
+
 
 ##########################################
 # Polytracker functions
@@ -49,6 +73,8 @@ fun:__polytracker_log_taint_op=uninstrumented
 fun:__polytracker_log_taint_op=custom
 fun:__polytracker_log_conditional_branch=uninstrumented
 fun:__polytracker_log_conditional_branch=custom
+fun:__polytracker_set_control_flow_logging=uninstrumented
+fun:__polytracker_set_control_flow_logging=discard
 fun:__polytracker_log_tainted_control_flow=uninstrumented
 fun:__polytracker_log_tainted_control_flow=custom
 # -- end
@@ -4267,6 +4293,60 @@ fun:__gxx_personality_v0=uninstrumented
 fun:__gxx_personality_v0=discard
 fun:abort_message=uninstrumented
 fun:abort_message=discard
+
+# Agave conformance exposes these entry points from its cdylib.  Keep their
+# public C ABI names intact; the Rust harness calls the instrumented Rust API
+# directly, so these boundary shims do not participate in the experiment.
+fun:*sol_compat_elf_loader_v1*=uninstrumented
+fun:*sol_compat_elf_loader_v1*=discard
+fun:*sol_compat_instr_execute_v1*=uninstrumented
+fun:*sol_compat_instr_execute_v1*=discard
+fun:*sol_compat_svm_txn_execute_v1*=uninstrumented
+fun:*sol_compat_svm_txn_execute_v1*=discard
+fun:*sol_compat_vm_serialize_execute_v1*=uninstrumented
+fun:*sol_compat_vm_serialize_execute_v1*=discard
+fun:*sol_compat_vm_syscall_execute_v1*=uninstrumented
+fun:*sol_compat_vm_syscall_execute_v1*=discard
+
+# The blstrs Rust crate calls the native BLST archive.  Its C functions are an
+# uninstrumented boundary; treating return values as untainted preserves the
+# native ABI while keeping taint in the surrounding Rust transaction code.
+fun:blst_*=uninstrumented
+fun:blst_*=discard
+fun:blake3_*=uninstrumented
+fun:blake3_*=discard
+fun:EC_*=uninstrumented
+fun:EC_*=discard
+fun:ECDSA_*=uninstrumented
+fun:ECDSA_*=discard
+fun:EVP_*=uninstrumented
+fun:EVP_*=discard
+fun:BN_*=uninstrumented
+fun:BN_*=discard
+fun:ERR_*=uninstrumented
+fun:ERR_*=discard
+fun:OPENSSL_*=uninstrumented
+fun:OPENSSL_*=discard
+fun:CRYPTO_*=uninstrumented
+fun:CRYPTO_*=discard
+fun:BIO_*=uninstrumented
+fun:BIO_*=discard
+fun:OBJ_*=uninstrumented
+fun:OBJ_*=discard
+fun:PEM_*=uninstrumented
+fun:PEM_*=discard
+fun:RAND_*=uninstrumented
+fun:RAND_*=discard
+fun:RSA_*=uninstrumented
+fun:RSA_*=discard
+fun:SSL_*=uninstrumented
+fun:SSL_*=discard
+fun:X509_*=uninstrumented
+fun:X509_*=discard
+fun:i2d_*=uninstrumented
+fun:i2d_*=discard
+fun:d2i_*=uninstrumented
+fun:d2i_*=discard
 ######## GENERATED ABI IGNORE #########
 fun:_ZN10__cxxabiv116__enum_type_infoD0Ev=uninstrumented
 fun:_ZN10__cxxabiv116__enum_type_infoD0Ev=discard

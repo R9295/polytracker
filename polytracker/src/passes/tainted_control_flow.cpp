@@ -103,10 +103,7 @@ void TaintedControlFlowPass::visitGetElementPtrInst(
   }
 }
 
-void TaintedControlFlowPass::visitBranchInst(llvm::BranchInst &bi) {
-  if (bi.isUnconditional()) {
-    return;
-  }
+void TaintedControlFlowPass::visitCondBrInst(llvm::CondBrInst &bi) {
 
   llvm::IRBuilder<> ir(&bi);
   auto cond = bi.getCondition();
@@ -151,8 +148,8 @@ void TaintedControlFlowPass::declareLoggingFunctions(llvm::Module &mod) {
       llvm::AttributeList::get(
           mod.getContext(),
           {{llvm::AttributeList::FunctionIndex,
-            llvm::Attribute::get(mod.getContext(),
-                                 llvm::Attribute::ReadNone)}}),
+            llvm::Attribute::getWithMemoryEffects(
+                mod.getContext(), llvm::MemoryEffects::none())}}),
       ir.getInt64Ty(), ir.getInt64Ty(), ir.getInt32Ty());
 
   fn_enter_log_fn = mod.getOrInsertFunction("__polytracker_enter_function",

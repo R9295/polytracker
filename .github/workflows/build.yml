@@ -61,7 +61,9 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           image: trailofbits/polytracker:latest
-          run: pytest /polytracker/tests
+          run: |
+            ctest --test-dir /polytracker-build --output-on-failure
+            pytest /polytracker/tests
 
   build_example:
     needs: build_linux

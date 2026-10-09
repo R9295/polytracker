@@ -8,11 +8,15 @@
 
 #include "polytracker/passes/taint_tracking.h"
 
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
 
 #include <spdlog/spdlog.h>
+
+#include <cstdlib>
 
 #include "polytracker/dfsan_types.h"
 #include "polytracker/passes/utils.h"
@@ -26,10 +30,26 @@ namespace polytracker {
 
 namespace {
 
+static bool shouldInstrumentModule(const llvm::Module &mod) {
+  const char *allowlist = std::getenv("POLYTRACKER_TAINT_MODULE_ALLOWLIST");
+  if (!allowlist || !*allowlist) {
+    return true;
+  }
+
+  llvm::StringRef module_id = mod.getModuleIdentifier();
+  llvm::SmallVector<llvm::StringRef, 8> patterns;
+  llvm::StringRef(allowlist).split(patterns, ',', -1, false);
+  return llvm::any_of(patterns, [module_id](llvm::StringRef pattern) {
+    return !pattern.empty() && module_id.contains(pattern);
+  });
+}
+
 // Inserts a function call to polytracker::taint_argv(argc, argv)
 // Assumes main is actually the main function of the program and
 // interprets first arg as argc and second as argv.
 static void emitTaintArgvCall(llvm::Function &main) {
+  if (main.isDeclaration() || main.arg_size() < 2)
+    return;
   // Get the parameters of the main function, argc, argv
   auto argc = main.getArg(0);
   if (!argc) {
@@ -93,10 +113,7 @@ void TaintTrackingPass::visitGetElementPtrInst(llvm::GetElementPtrInst &gep) {
   }
 }
 
-void TaintTrackingPass::visitBranchInst(llvm::BranchInst &bi) {
-  if (bi.isUnconditional()) {
-    return;
-  }
+void TaintTrackingPass::visitCondBrInst(llvm::CondBrInst &bi) {
   insertCondBrLogCall(bi, bi.getCondition());
 }
 
@@ -115,7 +132,16 @@ llvm::PreservedAnalyses
 TaintTrackingPass::run(llvm::Module &mod, llvm::ModuleAnalysisManager &mam) {
   label_ty = llvm::IntegerType::get(mod.getContext(), DFSAN_LABEL_BITS);
   declareLoggingFunctions(mod);
-  auto ignore{readIgnoreLists(ignore_lists)};
+  insertTaintStartupCall(mod);
+  if (!shouldInstrumentModule(mod)) {
+    return llvm::PreservedAnalyses::none();
+  }
+  str_vec_t ignore_list_paths(ignore_lists.begin(), ignore_lists.end());
+  if (const char *path = std::getenv("POLYTRACKER_TAINT_IGNORE_LIST");
+      path && *path) {
+    ignore_list_paths.emplace_back(path);
+  }
+  auto ignore{readIgnoreLists(ignore_list_paths)};
   for (auto &fn : mod) {
     if (ignore.count(fn.getName().str())) {
       continue;
@@ -126,7 +152,6 @@ TaintTrackingPass::run(llvm::Module &mod, llvm::ModuleAnalysisManager &mam) {
       emitTaintArgvCall(fn);
     }
   }
-  insertTaintStartupCall(mod);
   return llvm::PreservedAnalyses::none();
 }
 

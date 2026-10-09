@@ -1,49 +1,45 @@
 # Build base image
-FROM ubuntu:jammy as base
+FROM ubuntu:jammy AS base
 
 LABEL org.opencontainers.image.authors="evan.sultanik@trailofbits.com"
 
 ARG BUILD_TYPE="Release"
-
-# NOTE(msurovic): We install `clang` and related bitcode utilities via `apt`
-# in version 12 because the `clang-13` package contains version 13.0.1 which
-# has weird behavior wrt `-Werror`. The flag seems to be raised even if the
-# user doesn't explicitly specify so. We believe this is intentional on the
-# part of LLVM to mimic `gcc` behavior. MuPDF doesn't build with `clang-13`
-# installed from `apt`, for example.
+ARG BUILD_JOBS=8
 
 # Install base build dependencies via apt
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get -y update && apt-get -y install \
+  ca-certificates                           \
+  wget                                      \
   ninja-build                               \
   python3-pip                               \
-  python3.8-dev                             \
+  python3-dev                               \
   golang                                    \
-  clang-12                                  \
   cmake                                     \
   git                                       \
   file
 
+# Use one LLVM major for the compiler, bitcode tools, and pass headers.
+RUN wget -qO /etc/apt/trusted.gpg.d/apt.llvm.org.asc https://apt.llvm.org/llvm-snapshot.gpg.key && \
+    echo "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy-23 main" > /etc/apt/sources.list.d/llvm.list && \
+    apt-get -y update && apt-get -y install clang-23 llvm-23-dev llvm-23-tools
+
 # Install python dependencies via pip
-RUN pip3 install pytest blight
+RUN pip3 install pytest
 
 # Install symlinks to clang and llvm bitcode tools
-RUN update-alternatives --install /usr/bin/opt opt /usr/bin/opt-12 10 && \
-    update-alternatives --install /usr/bin/llvm-link llvm-link /usr/bin/llvm-link-12 10 && \
-    update-alternatives --install /usr/bin/llvm-ar llvm-ar /usr/bin/llvm-ar-12 10 && \
-    update-alternatives --install /usr/bin/clang clang /usr/bin/clang-12 10 && \
-    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-12 10 && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3 10
+ENV PATH=/usr/lib/llvm-23/bin:$PATH
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 10
 
 # Install gllvm for builds with bitcode references embedded in binary build targets
-RUN GO111MODULE=off go get github.com/SRI-CSL/gllvm/cmd/...
+RUN go install github.com/SRI-CSL/gllvm/cmd/...@v1.3.1
 ENV PATH=$PATH:/root/go/bin
 
 # Clone llvm to build `libc++` from source
-FROM base as llvm-sources
+FROM base AS llvm-sources
 
-RUN git clone --depth 1 --branch llvmorg-13.0.0 https://github.com/llvm/llvm-project.git /llvm-project
+RUN git clone --depth 1 --branch llvmorg-23.1.2 https://github.com/llvm/llvm-project.git /llvm-project
 
 # TODO(msurovic): I don't think there is a reason why we should be building
 # both `clean-libcxx` and `poly-libcxx`. The former is used when linking an
@@ -54,7 +50,7 @@ RUN git clone --depth 1 --branch llvmorg-13.0.0 https://github.com/llvm/llvm-pro
 
 # Build "clean" `libc++` with `gclang`. Used to link the uninstrumented
 # target of the user project. Installed into `/cxx_lib/clean_build`.
-FROM llvm-sources as clean-libcxx
+FROM llvm-sources AS clean-libcxx
 
 ENV WLLVM_BC_STORE=/cxx_clean_bitcode
 RUN mkdir -p $WLLVM_BC_STORE
@@ -70,15 +66,19 @@ RUN cmake -GNinja \
   -DCMAKE_CXX_COMPILER="gclang++" \
   -DCMAKE_INSTALL_PREFIX=$LIBCXX_INSTALL_DIR \
   -DLIBCXXABI_ENABLE_SHARED=NO \
+  -DLIBCXXABI_USE_LLVM_UNWINDER=OFF \
   -DLIBCXX_ENABLE_SHARED=NO \
-  -DLLVM_ENABLE_LIBCXX=ON \
+  -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=OFF \
+  -DLLVM_INCLUDE_TESTS=OFF \
+  -DLIBCXX_INCLUDE_TESTS=OFF \
+  -DLIBCXXABI_INCLUDE_TESTS=OFF \
   -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi"
 
-RUN cmake --build $LIBCXX_BUILD_DIR --target install-cxx install-cxxabi -j$((`nproc`+1))
+RUN cmake --build $LIBCXX_BUILD_DIR --target install-cxx install-cxxabi -j${BUILD_JOBS}
 
 # Build "poly" `libc++` with `gclang`. Used to link the instrumented
 # target of the user project. Installed into `/cxx_lib/poly_build`.
-FROM clean-libcxx as poly-libcxx
+FROM clean-libcxx AS poly-libcxx
 
 ENV WLLVM_BC_STORE=/cxx_poly_bitcode
 RUN mkdir -p $WLLVM_BC_STORE
@@ -94,17 +94,21 @@ RUN cmake -GNinja \
   -DCMAKE_CXX_COMPILER="gclang++" \
   -DCMAKE_INSTALL_PREFIX=$LIBCXX_INSTALL_DIR \
   -DLIBCXXABI_ENABLE_SHARED=NO \
+  -DLIBCXXABI_USE_LLVM_UNWINDER=OFF \
   -DLIBCXX_ENABLE_SHARED=NO \
+  -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=OFF \
   -DLIBCXX_ABI_VERSION=2 \
   -DLIBCXX_HERMETIC_STATIC_LIBRARY=ON \
   -DLIBCXX_ENABLE_STATIC_ABI_LIBRARY=ON \
-  -DLLVM_ENABLE_LIBCXX=ON \
+  -DLLVM_INCLUDE_TESTS=OFF \
+  -DLIBCXX_INCLUDE_TESTS=OFF \
+  -DLIBCXXABI_INCLUDE_TESTS=OFF \
   -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi"
 
-RUN cmake --build $LIBCXX_BUILD_DIR --target install-cxx install-cxxabi -j$((`nproc`+1))
+RUN cmake --build $LIBCXX_BUILD_DIR --target install-cxx install-cxxabi -j${BUILD_JOBS}
 
 # Build and install the polytracker
-FROM poly-libcxx as polytracker
+FROM poly-libcxx AS polytracker
 
 ARG DFSAN_FILENAME_ARCH=x86_64
 
@@ -122,7 +126,7 @@ RUN cmake -GNinja \
   -DCXX_LIB_PATH=/cxx_lib/poly_build \
   -DCMAKE_INSTALL_PREFIX=/polytracker-install
 
-RUN cmake --build /polytracker-build --target install -j$((`nproc`+1))
+RUN cmake --build /polytracker-build --target install -j${BUILD_JOBS}
 
 ENV DFSAN_LIB_PATH=/polytracker-install/lib/linux/libclang_rt.dfsan-${DFSAN_FILENAME_ARCH}.a
 ENV CXX_LIB_PATH=/cxx_lib

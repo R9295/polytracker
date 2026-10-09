@@ -17,6 +17,6 @@ struct RemoveFnAttrsPass : public llvm::PassInfoMixin<RemoveFnAttrsPass>,
                            public llvm::InstVisitor<RemoveFnAttrsPass> {
   llvm::PreservedAnalyses run(llvm::Module &mod,
                               llvm::ModuleAnalysisManager &mam);
-  void visitCallInst(llvm::CallInst &ci);
+  void visitCallBase(llvm::CallBase &ci);
 };
 } // namespace polytracker

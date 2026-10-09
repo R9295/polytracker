@@ -7,7 +7,7 @@
  */
 
 #include <llvm/Passes/PassBuilder.h>
-#include <llvm/Passes/PassPlugin.h>
+#include <llvm/Plugins/PassPlugin.h>
 
 #include "polytracker/passes/DataFlowSanitizer.h"
 #include "polytracker/passes/function_tracing.h"

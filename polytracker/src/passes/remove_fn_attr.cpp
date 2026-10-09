@@ -10,19 +10,21 @@
 
 namespace polytracker {
 
-void RemoveFnAttrsPass::visitCallInst(llvm::CallInst &ci) {
+static bool isInstrumented(llvm::StringRef name) {
+  return name.starts_with("dfs$") || name.starts_with("dfsw$") ||
+         name.starts_with("dfso$") || name.starts_with("__dfsw_") ||
+         name.starts_with("__dfso_");
+}
+
+void RemoveFnAttrsPass::visitCallBase(llvm::CallBase &ci) {
   auto fn{ci.getCalledFunction()};
-  if (!fn) {
-    return;
-  }
-  auto fname{fn->getName()};
-  if (fname.startswith("__dfsw") || fname.startswith("dfs$")) {
-    ci.removeAttribute(llvm::AttributeList::FunctionIndex,
-                       llvm::Attribute::InaccessibleMemOnly);
-    ci.removeAttribute(llvm::AttributeList::FunctionIndex,
-                       llvm::Attribute::InaccessibleMemOrArgMemOnly);
-    ci.removeAttribute(llvm::AttributeList::FunctionIndex,
-                       llvm::Attribute::ReadOnly);
+  // Indirect calls use the instrumented ABI too. Shadow accesses and logging
+  // invalidate memory effects inferred before instrumentation.
+  if (!fn || isInstrumented(fn->getName())) {
+    ci.removeFnAttr(llvm::Attribute::Memory);
+    ci.removeFnAttr(llvm::Attribute::Speculatable);
+    ci.removeFnAttr(llvm::Attribute::NoSync);
+    ci.removeFnAttr(llvm::Attribute::NoFree);
   }
 }
 
@@ -30,10 +32,11 @@ llvm::PreservedAnalyses
 RemoveFnAttrsPass::run(llvm::Module &mod, llvm::ModuleAnalysisManager &mam) {
   for (auto &fn : mod) {
     auto fname{fn.getName()};
-    if (fname.startswith("__dfsw") || fname.startswith("dfs$")) {
-      fn.removeFnAttr(llvm::Attribute::InaccessibleMemOnly);
-      fn.removeFnAttr(llvm::Attribute::InaccessibleMemOrArgMemOnly);
-      fn.removeFnAttr(llvm::Attribute::ReadOnly);
+    if (isInstrumented(fname)) {
+      fn.removeFnAttr(llvm::Attribute::Memory);
+      fn.removeFnAttr(llvm::Attribute::Speculatable);
+      fn.removeFnAttr(llvm::Attribute::NoSync);
+      fn.removeFnAttr(llvm::Attribute::NoFree);
     }
     visit(fn);
   }

@@ -1,4 +1,7 @@
 #include "polytracker/taint_sources.h"
+#include <algorithm>
+#include <cstdlib>
+#include <iterator>
 #include <vector>
 
 EXT_C_FUNC void *__dfsw_malloc(size_t size, dfsan_label size_label,

@@ -15,3 +15,9 @@ target_link_libraries(
   PRIVATE indicators spdlog::spdlog_header_only)
 
 install(TARGETS PolytrackerPass DESTINATION ${POLYTRACK_PASS_DIR})
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME llvm_passes
+  COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/../tests/llvm/test_passes.py)
+set_tests_properties(llvm_passes PROPERTIES ENVIRONMENT
+  "POLYTRACKER_PASS=$<TARGET_FILE:PolytrackerPass>;LLVM_OPT=${LLVM_TOOLS_BINARY_DIR}/opt")

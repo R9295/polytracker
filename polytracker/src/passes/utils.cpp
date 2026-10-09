@@ -29,7 +29,7 @@ str_set_t readIgnoreLists(const str_vec_t &paths) {
     for (std::string line; std::getline(fs, line);) {
       llvm::StringRef ref(line);
       // ignoring comments and empty lines
-      if (ref.startswith("#") || ref == "\n") {
+      if (ref.starts_with("#") || ref == "\n") {
         continue;
       }
       // ignore `main`

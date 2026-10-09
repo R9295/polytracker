@@ -289,6 +289,19 @@ cd /polytracker/the_klondike/poppler-0.84.0/build/utils
 
 ## Hacking on PolyTracker Using the Docker Environment
 
+The compiler and instrumentation passes target **LLVM/Clang 23.1.x**. Use
+matching LLVM 23 versions of `clang`, `clang++`, `opt`, `llvm-link`, and
+`llvm-ar`; older bitcode and pass plugins must be rebuilt. The Docker image
+installs LLVM 23 and builds libc++/libc++abi from LLVM 23.1.2 sources, including
+the separate ABI version 2 libraries used by the PolyTracker runtime.
+PolyTracker retains its own DFSan runtime and 32-bit labels; the stock LLVM
+DFSan runtime is not a replacement for it.
+
+After updating this checkout, run `git submodule update --init --recursive`
+and rebuild the image with `make docker`. For a CMake build in an existing
+development environment, select the matching LLVM package with
+`-DLLVM_DIR=/usr/lib/llvm-23/lib/cmake/llvm` and use Clang 23 for both compilers.
+
 Suppose you want to get a little more in-depth in extending the PolyTracker
 codebase or in analysing TDAG traces, and you don't want to mess with your
 local environment by installing an LLVM version that is heavily customized.
@@ -304,6 +317,10 @@ Dockerfiles).
 
 Running both the Python and C++ unit tests should be done inside the PolyTracker
 Docker container.
+
+Run `ctest --test-dir /polytracker-build --output-on-failure` for the C++ unit
+tests and LLVM IR regression tests. The latter check opaque pointers, custom
+callback wrappers, memory effects, and the instrumentation/optimization pipeline.
 
 The Catch2 unit tests in `unittests/` live in
 `/polytracker-build/unittests/src/taintdag/` within the container. Run the test binary
