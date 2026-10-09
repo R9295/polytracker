@@ -1,0 +1,9 @@
+diff --git a/svm-conformance/Cargo.toml b/svm-conformance/Cargo.toml
+index 0cbe284..7d33b35 100644
+--- a/svm-conformance/Cargo.toml
++++ b/svm-conformance/Cargo.toml
+@@ -14 +14,3 @@
+-crate-type = ["cdylib", "rlib"]
++# The PolyTracker experiment links this package as Rust code. DFSan's static
++# runtime uses non-PIC TLS and cannot be embedded in this optional shared library.
++crate-type = ["rlib"]

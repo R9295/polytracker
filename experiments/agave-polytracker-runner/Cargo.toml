@@ -1,0 +1,12 @@
+[package]
+name = "agave-polytracker-runner"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+prost = "0.14.4"
+protosol = "=17.0.0"
+solana-svm-conformance = { path = "../agave/svm-conformance", default-features = false, features = ["ffi"] }
+
+[workspace]
