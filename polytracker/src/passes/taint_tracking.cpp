@@ -17,6 +17,7 @@
 #include <spdlog/spdlog.h>
 
 #include <cstdlib>
+#include <string>
 
 #include "polytracker/dfsan_types.h"
 #include "polytracker/passes/utils.h"
@@ -30,18 +31,45 @@ namespace polytracker {
 
 namespace {
 
-static bool shouldInstrumentModule(const llvm::Module &mod) {
+static bool shouldInstrumentFunction(const llvm::Module &mod,
+                                     const llvm::Function &fn) {
+  bool has_allowlist = false;
   const char *allowlist = std::getenv("POLYTRACKER_TAINT_MODULE_ALLOWLIST");
-  if (!allowlist || !*allowlist) {
-    return true;
+  if (allowlist && *allowlist) {
+    has_allowlist = true;
+    llvm::StringRef module_id = mod.getModuleIdentifier();
+    llvm::StringRef source_file = mod.getSourceFileName();
+    llvm::SmallVector<llvm::StringRef, 8> patterns;
+    llvm::StringRef(allowlist).split(patterns, ',', -1, false);
+    if (llvm::any_of(patterns, [module_id, source_file](llvm::StringRef pattern) {
+          return !pattern.empty() &&
+                 (module_id.contains(pattern) || source_file.contains(pattern));
+        })) {
+      return true;
+    }
   }
 
-  llvm::StringRef module_id = mod.getModuleIdentifier();
-  llvm::SmallVector<llvm::StringRef, 8> patterns;
-  llvm::StringRef(allowlist).split(patterns, ',', -1, false);
-  return llvm::any_of(patterns, [module_id](llvm::StringRef pattern) {
-    return !pattern.empty() && module_id.contains(pattern);
-  });
+  const char *crate_allowlist =
+      std::getenv("POLYTRACKER_TAINT_CRATE_ALLOWLIST");
+  if (crate_allowlist && *crate_allowlist) {
+    has_allowlist = true;
+    llvm::SmallVector<llvm::StringRef, 8> crates;
+    llvm::StringRef(crate_allowlist).split(crates, ',', -1, false);
+    for (llvm::StringRef crate : crates) {
+      if (crate.empty())
+        continue;
+      // Rust v0 and legacy mangling both encode an identifier as its decimal
+      // byte length followed by its text.  Including that length makes crate
+      // matching exact, so `solana_svm` does not select `solana_svm_*` crates.
+      std::string marker =
+          "_" + std::to_string(crate.size()) + crate.str();
+      if (fn.getName().contains(marker)) {
+        return true;
+      }
+    }
+  }
+
+  return !has_allowlist;
 }
 
 // Inserts a function call to polytracker::taint_argv(argc, argv)
@@ -133,9 +161,6 @@ TaintTrackingPass::run(llvm::Module &mod, llvm::ModuleAnalysisManager &mam) {
   label_ty = llvm::IntegerType::get(mod.getContext(), DFSAN_LABEL_BITS);
   declareLoggingFunctions(mod);
   insertTaintStartupCall(mod);
-  if (!shouldInstrumentModule(mod)) {
-    return llvm::PreservedAnalyses::none();
-  }
   str_vec_t ignore_list_paths(ignore_lists.begin(), ignore_lists.end());
   if (const char *path = std::getenv("POLYTRACKER_TAINT_IGNORE_LIST");
       path && *path) {
@@ -143,6 +168,9 @@ TaintTrackingPass::run(llvm::Module &mod, llvm::ModuleAnalysisManager &mam) {
   }
   auto ignore{readIgnoreLists(ignore_list_paths)};
   for (auto &fn : mod) {
+    if (!shouldInstrumentFunction(mod, fn)) {
+      continue;
+    }
     if (ignore.count(fn.getName().str())) {
       continue;
     }

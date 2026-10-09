@@ -28,8 +28,15 @@ class LLVM23PassTests(unittest.TestCase):
         if not self.plugin.is_file() or not shutil.which(self.opt):
             self.fail("Build the LLVM 23 pass and set POLYTRACKER_PASS and LLVM_OPT")
 
-    def instrument(self, ir, passes="pt-dfsan,pt-rm-fn-attr", extra=()):
+    def instrument(
+        self, ir, passes="pt-dfsan,pt-rm-fn-attr", extra=(), extra_env=None
+    ):
         source = 'target triple = "x86_64-unknown-linux-gnu"\n' + ir
+        env = os.environ.copy()
+        env.pop("POLYTRACKER_TAINT_MODULE_ALLOWLIST", None)
+        env.pop("POLYTRACKER_TAINT_CRATE_ALLOWLIST", None)
+        if extra_env:
+            env.update(extra_env)
         result = subprocess.run(
             [
                 self.opt,
@@ -49,6 +56,7 @@ class LLVM23PassTests(unittest.TestCase):
             text=True,
             capture_output=True,
             cwd=self.work.name,
+            env=env,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
@@ -190,6 +198,69 @@ class LLVM23PassTests(unittest.TestCase):
         )
         self.assertIn("@__dfsw___polytracker_log_tainted_control_flow", output)
         self.assertIn("@__polytracker_log_func_entry", output)
+
+    def test_rust_crate_allowlist_is_exact_per_function(self):
+        output = self.instrument(
+            """
+            define i32 @_RNvCs123_10solana_svm7allowed(i1 %condition) {
+              br i1 %condition, label %yes, label %no
+            yes:
+              ret i32 1
+            no:
+              ret i32 0
+            }
+            define i32 @_RNvCs123_24solana_svm_log_collector8excluded(i1 %condition) {
+              br i1 %condition, label %yes, label %no
+            yes:
+              ret i32 1
+            no:
+              ret i32 0
+            }
+            define i32 @_RNvCs123_22solana_program_runtime7allowed(i1 %condition) {
+              br i1 %condition, label %yes, label %no
+            yes:
+              ret i32 1
+            no:
+              ret i32 0
+            }
+            define i32 @_RNvCs123_22solana_svm_conformance8excluded(i1 %condition) {
+              br i1 %condition, label %yes, label %no
+            yes:
+              ret i32 1
+            no:
+              ret i32 0
+            }
+        """,
+            passes="pt-taint",
+            extra_env={
+                "POLYTRACKER_TAINT_CRATE_ALLOWLIST": (
+                    "solana_svm,solana_program_runtime"
+                )
+            },
+        )
+        self.assertEqual(
+            output.count("call void @__polytracker_log_conditional_branch"), 2
+        )
+
+    def test_module_allowlist_checks_source_filename(self):
+        ir = """
+            source_filename = "/checkout/agave/svm/src/lib.rs"
+            define i32 @branch(i1 %condition) {
+              br i1 %condition, label %yes, label %no
+            yes:
+              ret i32 1
+            no:
+              ret i32 0
+            }
+        """
+        output = self.instrument(
+            ir,
+            passes="pt-taint",
+            extra_env={"POLYTRACKER_TAINT_MODULE_ALLOWLIST": "/svm/src/"},
+        )
+        self.assertEqual(
+            output.count("call void @__polytracker_log_conditional_branch"), 1
+        )
 
 
 if __name__ == "__main__":
