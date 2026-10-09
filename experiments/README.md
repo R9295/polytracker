@@ -36,7 +36,8 @@ git -C experiments/test-vectors sparse-checkout set txn/fixtures
 ```
 
 The Agave patch disables its optional `cdylib`; PolyTracker's static DFSan
-runtime cannot be linked into that shared library.
+runtime cannot be linked into that shared library. It also limits control-flow
+logging to SVM message execution and post-execution account reconstruction.
 
 ## Instrument and run
 
@@ -53,6 +54,9 @@ POLYDB=runtime.tdag "$BIN" "$INPUT"
 Run the binary directly after building. Setting `POLYDB` on `cargo run` can
 let an instrumented Cargo subprocess overwrite the trace. Use a new trace name
 for each run.
+
+For the pinned fixture, `cd experiments/agave-polytracker-runner` and run
+`./run.sh`. Override `INPUT`, `BIN`, `TRACE`, or `POLYTRACKER_PYTHON` as needed.
 
 Pass `--check` when you also want the harness to compare Agave's result with
 the fixture's expected output; a mismatch exits with status 1.

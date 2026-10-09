@@ -7,3 +7,33 @@ index 0cbe284..7d33b35 100644
 +# The PolyTracker experiment links this package as Rust code. DFSan's static
 +# runtime uses non-PIC TLS and cannot be embedded in this optional shared library.
 +crate-type = ["rlib"]
+diff --git a/svm-conformance/src/txn.rs b/svm-conformance/src/txn.rs
+index d967070..eee37f1 100644
+--- a/svm-conformance/src/txn.rs
++++ b/svm-conformance/src/txn.rs
+@@ -18,0 +19,4 @@
++unsafe extern "C" {
++    fn __polytracker_set_control_flow_logging(enabled: u8);
++}
++
+@@ -20,0 +25 @@
++    unsafe { __polytracker_set_control_flow_logging(0) };
+diff --git a/svm/src/conformance/txn/harness.rs b/svm/src/conformance/txn/harness.rs
+index 4e5c732..5ad400f 100644
+--- a/svm/src/conformance/txn/harness.rs
++++ b/svm/src/conformance/txn/harness.rs
+@@ -31,0 +32,4 @@
++unsafe extern "C" {
++    fn __polytracker_set_control_flow_logging(enabled: u8);
++}
++
+@@ -141,3 +145,5 @@
+-        invoke_context
++        unsafe { __polytracker_set_control_flow_logging(1) };
++        let status = invoke_context
+             .process_message(&sanitized_message, &mut timings, &mut executed_units)
+-            .map_err(|(index, err)| TransactionError::InstructionError(index, err))
++            .map_err(|(index, err)| TransactionError::InstructionError(index, err));
++        status
+@@ -175,0 +180 @@
++    unsafe { __polytracker_set_control_flow_logging(0) };
