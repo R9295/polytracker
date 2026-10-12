@@ -47,13 +47,20 @@ extern void polytracker_end();
 // Following the libc custom functions from custom.cc
 namespace {
 
-static int impl_open(const char *path, int oflags, dfsan_label path_label,
-                     dfsan_label flag_label, dfsan_label *va_labels,
-                     dfsan_label *ret_label, ...) {
-  va_list args;
-  va_start(args, ret_label);
-  int fd = open(path, oflags, args);
-  va_end(args);
+static bool open_needs_mode(int oflags) {
+  if (oflags & O_CREAT)
+    return true;
+#ifdef O_TMPFILE
+  if ((oflags & O_TMPFILE) == O_TMPFILE)
+    return true;
+#endif
+  return false;
+}
+
+static int impl_open(const char *path, int oflags, mode_t mode,
+                     dfsan_label *ret_label) {
+  int fd = open_needs_mode(oflags) ? open(path, oflags, mode)
+                                   : open(path, oflags);
 
   if (fd >= 0) {
     get_polytracker_tdag().open_file(fd, path);
@@ -159,24 +166,43 @@ static size_t impl_fread(F &&fread_function, FILE *fd, void *buff, size_t size,
 EXT_C_FUNC int __dfsw_open(const char *path, int oflags, dfsan_label path_label,
                            dfsan_label flag_label, dfsan_label *va_labels,
                            dfsan_label *ret_label, ...) {
-  return impl_open(path, oflags, path_label, flag_label, va_labels, ret_label);
+  mode_t mode = 0;
+  if (open_needs_mode(oflags)) {
+    va_list args;
+    va_start(args, ret_label);
+    mode = va_arg(args, mode_t);
+    va_end(args);
+  }
+  return impl_open(path, oflags, mode, ret_label);
 }
 
 EXT_C_FUNC int __dfsw_open64(const char *path, int oflags,
                              dfsan_label path_label, dfsan_label flag_label,
                              dfsan_label *va_labels, dfsan_label *ret_label,
                              ...) {
-  return impl_open(path, oflags, path_label, flag_label, va_labels, ret_label);
+  mode_t mode = 0;
+  if (open_needs_mode(oflags)) {
+    va_list args;
+    va_start(args, ret_label);
+    mode = va_arg(args, mode_t);
+    va_end(args);
+  }
+  return impl_open(path, oflags, mode, ret_label);
 }
 
 EXT_C_FUNC int __dfsw_openat(int dirfd, const char *path, int oflags,
                              dfsan_label path_label, dfsan_label flag_label,
                              dfsan_label *va_labels, dfsan_label *ret_label,
                              ...) {
-  va_list args;
-  va_start(args, ret_label);
-  int fd = openat(dirfd, path, oflags, args);
-  va_end(args);
+  mode_t mode = 0;
+  if (open_needs_mode(oflags)) {
+    va_list args;
+    va_start(args, ret_label);
+    mode = va_arg(args, mode_t);
+    va_end(args);
+  }
+  int fd = open_needs_mode(oflags) ? openat(dirfd, path, oflags, mode)
+                                   : openat(dirfd, path, oflags);
 
   if (fd >= 0) {
     get_polytracker_tdag().open_file(fd, path);

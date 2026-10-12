@@ -118,17 +118,22 @@ struct Labels : public FixedSizeAlloc<storage_t> {
   void affects_control_flow(label_t label) {
     using labelq = utils::LabelDeq<32>;
 
-    // Do a check on label to see if it shoudld be added to the q.
+    // Do a check on label to see if it should be added to the queue.  Mark a
+    // label when it is enqueued, rather than when it is dequeued.  A taint DAG
+    // can have heavily shared parents; delaying the mark allows the same
+    // parent to be queued once per incoming edge and can make the worklist
+    // grow exponentially.
     // - If it affects control flow, ignore it. Already processed.
-    // - If it is source taint, just mark it as affecting cf.
+    // - Mark it immediately so subsequent incoming edges do not enqueue it.
+    // - If it is source taint, no further traversal is necessary.
     // - else add for further processing
     auto add_to_q = [this](label_t label) -> bool {
       auto encoded = begin()[label];
       if (check_affects_control_flow(encoded))
         return false;
 
+      set_affects_control_flow(label);
       if (is_source_taint(encoded)) {
-        set_affects_control_flow(label);
         return false;
       }
 
@@ -171,7 +176,6 @@ struct Labels : public FixedSizeAlloc<storage_t> {
       auto l = q.pop_front();
       auto encoded = begin()[l];
 
-      set_affects_control_flow(l);
       std::visit(visitor, decode(encoded));
     }
   }

@@ -4313,6 +4313,10 @@ fun:*sol_compat_vm_syscall_execute_v1*=discard
 # native ABI while keeping taint in the surrounding Rust transaction code.
 fun:blst_*=uninstrumented
 fun:blst_*=discard
+# ring's Rust wrappers call native assembly through version-prefixed C symbols.
+# Keep that native boundary on its original ABI as well.
+fun:ring_core_*=uninstrumented
+fun:ring_core_*=discard
 fun:blake3_*=uninstrumented
 fun:blake3_*=discard
 fun:EC_*=uninstrumented

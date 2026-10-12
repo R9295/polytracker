@@ -205,7 +205,11 @@ SANITIZER_INTERFACE_ATTRIBUTE char *__dfso_strpbrk(
 
 static int dfsan_memcmp_bcmp(const void *s1, const void *s2, size_t n,
                              size_t *bytes_read) {
-  const char *cs1 = (const char *) s1, *cs2 = (const char *) s2;
+  // memcmp compares bytes as unsigned char values.  Using plain char here
+  // reverses ordering whenever the first differing byte crosses 0x80, which
+  // can change program behavior (for example, deterministic key sorting).
+  const unsigned char *cs1 = (const unsigned char *) s1;
+  const unsigned char *cs2 = (const unsigned char *) s2;
   for (size_t i = 0; i != n; ++i) {
     if (cs1[i] != cs2[i]) {
       *bytes_read = i + 1;
